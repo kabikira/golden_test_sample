@@ -9,42 +9,47 @@ import 'support/alchemist/golden_test_device_scenario.dart';
 
 void main() {
   group('MyApp Golden Test', () {
-    Future<void> precacheAssetsSkippingAnimations(WidgetTester tester) async {
-      final assetImages = <AssetImage>{};
+    Future<void> precacheGoldenImages(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        final assetImages = <AssetBundleImageProvider>{};
 
-      for (final element in find.byType(Image).evaluate()) {
-        final imageProvider = (element.widget as Image).image;
-        if (imageProvider is AssetImage) {
-          assetImages.add(imageProvider);
-        }
-      }
-
-      for (final element in find.byType(DecoratedBox).evaluate()) {
-        final widget = element.widget as DecoratedBox;
-        final decoration = widget.decoration;
-        if (decoration is BoxDecoration) {
-          final image = decoration.image?.image;
-          if (image is AssetImage) {
-            assetImages.add(image);
+        void collect(ImageProvider provider) {
+          if (provider is AssetBundleImageProvider) {
+            assetImages.add(provider);
           }
         }
-      }
 
-      await tester.runAsync(() async {
-        for (final assetImage in assetImages) {
-          final key = await assetImage.obtainKey(const ImageConfiguration());
-          final bundle = key.bundle;
-          final data = await bundle.load(key.name);
-          final codec = await ui.instantiateImageCodec(
-            data.buffer.asUint8List(),
-          );
+        for (final element in find.byType(Image).evaluate()) {
+          final widget = element.widget as Image;
+          collect(widget.image);
+        }
+
+        for (final element in find.byType(FadeInImage).evaluate()) {
+          final widget = element.widget as FadeInImage;
+          collect(widget.image);
+        }
+
+        for (final element in find.byType(DecoratedBox).evaluate()) {
+          final decoration = (element.widget as DecoratedBox).decoration;
+          if (decoration is BoxDecoration) {
+            final image = decoration.image?.image;
+            if (image is AssetBundleImageProvider) {
+              assetImages.add(image);
+            }
+          }
+        }
+
+        for (final provider in assetImages) {
+          final key = await provider.obtainKey(const ImageConfiguration());
+          final data = await key.bundle.load(key.name);
+          final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
           final frame = await codec.getNextFrame();
           frame.image.dispose();
           codec.dispose();
         }
       });
 
-      // GIF が次フレームを要求し続けるため pumpAndSettle は避け、描画を 1 フレーム分だけ進める
+      // GIF など継続再生する画像でも描画を一度だけ進めれば十分
       await tester.pump(const Duration(milliseconds: 100));
     }
 
@@ -57,7 +62,7 @@ void main() {
     goldenTest(
       'Default',
       fileName: 'my_app_default',
-      pumpBeforeTest: precacheAssetsSkippingAnimations,
+      pumpBeforeTest: precacheGoldenImages,
       builder: () {
         final children = <Widget>[];
 
